@@ -13,6 +13,7 @@ import itertools
 import contextlib
 import collections
 from numbers import Integral
+import tensorflow as tf
 
 from cytoolz import (unique, concat, frequencies,
                      partition_all, merge_with, valmap)
@@ -4079,8 +4080,13 @@ class TNLinearOperator(spla.LinearOperator):
     """
 
     def __init__(self, tns, left_inds, right_inds, ldims=None, rdims=None,
-                 backend=None, is_conj=False):
+                 backend=None, is_conj=False):            
         self.backend = _TENSOR_LINOP_BACKEND if backend is None else backend
+
+        print(type(tns[0].data))
+        if isinstance(tns[0].data, tf.Tensor):
+            self.backend = 'tensorflow'
+        print(self.backend)
 
         if isinstance(tns, TensorNetwork):
             self._tensors = tns.tensors
@@ -4118,7 +4124,8 @@ class TNLinearOperator(spla.LinearOperator):
         self._transpose_linop = None
         self._contractors = {}
 
-        super().__init__(dtype=self._tensors[0].dtype, shape=(ld, rd))
+        # super().__init__(dtype=self._tensors[0].dtype, shape=(ld, rd))
+        super().__init__(dtype=np.float32, shape=(ld, rd))
 
     def _matvec(self, vec):
         in_data = reshape(vec, self.rdims)
@@ -4139,7 +4146,8 @@ class TNLinearOperator(spla.LinearOperator):
         if self.is_conj:
             out_data = conj(out_data)
 
-        return out_data.ravel()
+        # return out_data.ravel()
+        return out_data
 
     def _matmat(self, mat):
         d = mat.shape[-1]

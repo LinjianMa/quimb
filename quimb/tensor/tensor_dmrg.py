@@ -3,6 +3,7 @@
 
 import itertools
 import numpy as np
+import time
 
 from ..utils import progbar
 from ..core import prod
@@ -925,8 +926,66 @@ class DMRG:
 
         return tot_ens[-1]
 
+    def _hvp_update_local_state(self, i, direction, num_inner_iter=1, **compress_opts):
+        self.ME_eff_ham.move_to(i)
+
+        dims, lix_L, lix_R, lix, uix_L, uix_R, uix, l_bond_ind, u_bond_ind = \
+            parse_2site_inds_dims(self._k, self._b, i)
+
+        # get local operators
+        Heff, Neff = self.form_local_ops(i, dims, lix, uix)
+
+        # get the old 2-site local groundstate to use as initial guess
+        loc_gs_old = self._k[i].contract(self._k[i + 1]).to_dense(uix)
+
+        # find the 2-site local groundstate and energy
+        for _ in range(num_inner_iter):
+            Heff._matvec(loc_gs_old)
+        return
+
+    def hvp_sweep(self, direction, num_inner_iter=1, canonize=True, verbosity=0, **update_opts):
+        if canonize:
+            {'R': self._k.right_canonize,
+             'L': self._k.left_canonize}[direction](bra=self._b)
+
+        n, bsz = self.n, self.bsz
+
+        direction, begin, sweep = {
+            ('R', False): ('right', 'left', range(0, n - bsz + 1)),
+            ('L', False): ('left', 'right', range(n - bsz, -1, -1)),
+            ('R', True): ('right', 'left', range(0, n)),
+            ('L', True): ('left', 'right', range(n - 1, -1, -1)),
+        }[direction, self.cyclic]
+
+        if verbosity:
+            sweep = progbar(sweep, ncols=80, total=len(sweep))
+
+        env_opts = {'begin': begin, 'bsz': bsz, 'cyclic': self.cyclic,
+                    'ssz': self.opts['periodic_segment_size'],
+                    'method': self.opts['periodic_compress_method'],
+                    'max_bond': self.opts['periodic_compress_max_bond']}
+
+        # setup moving energy environment
+        en_opts = {**env_opts, 'eps': self.opts['periodic_compress_ham_eps']}
+        self.ME_eff_ham = MovingEnvironment(self.TN_energy, **en_opts)
+
+        # perform the sweep, collecting local and total energies
+        t0 = time.time()
+        for i in sweep:
+            self._hvp_update_local_state(i, num_inner_iter=1, direction=direction, **update_opts)
+        dt = (time.time() - t0) / num_inner_iter
+
+        if verbosity:
+            sweep.close()
+
+        return dt
+
     def sweep_right(self, canonize=True, verbosity=0, **update_opts):
         return self.sweep(direction='R', canonize=canonize,
+                          verbosity=verbosity, **update_opts)
+
+    def hvp_sweep_right(self, num_inner_iter=1, canonize=True, verbosity=0, **update_opts):
+        return self.hvp_sweep(num_inner_iter=1, direction='R', canonize=canonize,
                           verbosity=verbosity, **update_opts)
 
     def sweep_left(self, canonize=True, verbosity=0, **update_opts):
