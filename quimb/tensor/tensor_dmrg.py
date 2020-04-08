@@ -669,11 +669,11 @@ class DMRG:
                      'left_inds': lix, 'right_inds': uix}
 
         # form effective hamiltonian
-        if dense:
-            # contract remaining hamiltonian and get its dense representation
-            Heff = (self._eff_ham ^ '_HAM')['_HAM'].to_dense(lix, uix)
-        else:
-            Heff = TNLinearOperator(self._eff_ham['_HAM'], **dims_inds)
+        #if dense:
+        #    # contract remaining hamiltonian and get its dense representation
+        #    Heff = (self._eff_ham ^ '_HAM')['_HAM'].to_dense(lix, uix)
+        #else:
+        Heff = TNLinearOperator(self._eff_ham['_HAM'], **dims_inds)
 
         # form effective norm
         if self.cyclic:
