@@ -769,7 +769,7 @@ class DMRG:
 
         return loc_en.item(), tot_en
 
-    def _update_local_state_2site(self, i, direction, **compress_opts):
+    def _update_local_state_2site(self, i, direction, return_matvec_num=False, **compress_opts):
         r"""Find the 2-site effective tensor groundstate of::
 
             >->->->->-/| |\-<-<-<-<-<-<-<-<          /| |\
@@ -795,7 +795,7 @@ class DMRG:
         loc_en, loc_gs = self._eigs(Heff, B=Neff, v0=loc_gs_old)
 
         # perform some minor checks and corrections
-        loc_en, loc_gs = self.post_check(i, Neff, loc_gs, loc_en, loc_gs_old)
+        # loc_en, loc_gs = self.post_check(i, Neff, loc_gs, loc_en, loc_gs_old)
 
         # split the two site local groundstate
         T_AB = Tensor(loc_gs.A.reshape(dims), uix)
@@ -822,7 +822,10 @@ class DMRG:
 
         tot_en = self._eff_ham ^ all
 
-        return loc_en.item(), tot_en
+        if return_matvec_num:
+            return loc_en.item(), tot_en, Heff.num_call_matvec
+        else:
+            return loc_en.item(), tot_en
 
     def _update_local_state(self, i, **update_opts):
         """Move envs to site ``i`` and dispatch to the correct local updater.
@@ -838,7 +841,7 @@ class DMRG:
             2: self._update_local_state_2site,
         }[self.bsz](i, **update_opts)
 
-    def sweep(self, direction, canonize=True, verbosity=0, **update_opts):
+    def sweep(self, direction, canonize=True, return_matvec_num=False, verbosity=0, **update_opts):
         r"""Perform a sweep of optimizations, either rightwards::
 
               optimize -->
@@ -909,10 +912,16 @@ class DMRG:
         self.ME_eff_ham = MovingEnvironment(self.TN_energy, **en_opts)
 
         # perform the sweep, collecting local and total energies
-        local_ens, tot_ens = zip(*[
-            self._update_local_state(i, direction=direction, **update_opts)
-            for i in sweep
-        ])
+        if not return_matvec_num:
+            local_ens, tot_ens = zip(*[
+                self._update_local_state(i, direction=direction, **update_opts)
+                for i in sweep
+            ])
+        else:
+            local_ens, tot_ens, num_matvecs_list = zip(*[
+                self._update_local_state(i, direction=direction, return_matvec_num=True, **update_opts)
+                for i in sweep
+            ])
 
         if verbosity:
             sweep.close()
@@ -924,7 +933,10 @@ class DMRG:
             self.bond_sizes_ham.append(self.ME_eff_ham.bond_sizes)
             self.bond_sizes_norm.append(self.ME_eff_norm.bond_sizes)
 
-        return tot_ens[-1]
+        if return_matvec_num:
+            return tot_ens[-1], np.sum(num_matvecs_list)
+        else:
+            return tot_ens[-1]
 
     def _hvp_update_local_state(self, i, direction, num_inner_iter=1, **compress_opts):
         self.ME_eff_ham.move_to(i)
@@ -980,8 +992,8 @@ class DMRG:
 
         return dt
 
-    def sweep_right(self, canonize=True, verbosity=0, **update_opts):
-        return self.sweep(direction='R', canonize=canonize,
+    def sweep_right(self, canonize=True, verbosity=0, return_matvec_num=False, **update_opts):
+        return self.sweep(direction='R', canonize=canonize, return_matvec_num=return_matvec_num,
                           verbosity=verbosity, **update_opts)
 
     def hvp_sweep_right(self, num_inner_iter=1, canonize=True, verbosity=0, **update_opts):

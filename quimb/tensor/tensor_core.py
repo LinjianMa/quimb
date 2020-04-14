@@ -4123,11 +4123,13 @@ class TNLinearOperator(spla.LinearOperator):
         self._adjoint_linop = None
         self._transpose_linop = None
         self._contractors = {}
+        self.num_call_matvec = 0
 
-        # super().__init__(dtype=self._tensors[0].dtype, shape=(ld, rd))
-        super().__init__(dtype=np.float32, shape=(ld, rd))
+        super().__init__(dtype=self._tensors[0].dtype, shape=(ld, rd))
+        # super().__init__(dtype=np.float32, shape=(ld, rd))
 
     def _matvec(self, vec):
+
         in_data = reshape(vec, self.rdims)
 
         if self.is_conj:
@@ -4147,6 +4149,7 @@ class TNLinearOperator(spla.LinearOperator):
             out_data = conj(out_data)
 
         # return out_data.ravel()
+        self.num_call_matvec += 1
         return out_data
 
     def _matmat(self, mat):
